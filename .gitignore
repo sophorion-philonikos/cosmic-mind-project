@@ -1,0 +1,32 @@
+# Dependency directories
+node_modules/
+frontend/node_modules/
+
+# Next.js build output
+.next/
+frontend/.next/
+out/
+build/
+
+# Environment variables (Never upload API keys to GitHub!)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Mac system files
+.DS_Store
+
+# Backend & Python dependencies
+backend/venv/
+backend/__pycache__/
+*.pyc
+
+# Databases
+backend/neo4j_data/
+*.db
+*.db.0
+
+# Massive OS binaries
+*.dylib

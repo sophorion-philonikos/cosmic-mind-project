@@ -1,0 +1,11 @@
+version: '3'
+services:
+  neo4j:
+    image: neo4j:5.15.0
+    ports:
+      - "7474:7474" # This is the web browser interface
+      - "7687:7687" # This is the bolt port Python uses to talk to it
+    environment:
+      - NEO4J_AUTH=neo4j/cosmicmind123 # Our local dev password
+    volumes:
+      - ./backend/neo4j_data:/data # Saves our data so it doesn't delete when we close Docker
