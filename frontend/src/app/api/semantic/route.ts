@@ -1,19 +1,22 @@
 import { NextResponse } from 'next/server';
+import * as fs from 'fs';
+import * as path from 'path';
 
-// --- MOCKED VECTOR DATABASE ---
-// In a production RAG environment, this would be a call to Pinecone or a pgvector database.
-// For this pristine architecture, we simulate the Cosine Similarity returns to test the UI physics safely.
-const MOCK_VECTOR_DB: Record<string, string[]> = {
-  "Ezekiel 1": ["Genesis 1", "Psalms 104", "Isaiah 6", "Revelation 4"],
-  "Genesis 1": ["Ezekiel 1", "Psalms 8", "Psalms 104", "John 1"],
-  "Psalms 104": ["Genesis 1", "Ezekiel 1", "Job 38", "Proverbs 8"],
-  "Isaiah 6": ["Ezekiel 1", "Revelation 4", "Exodus 33", "1 Kings 22"],
-  // Default fallback for any other chapter clicked
-  "default": ["Psalms 119", "Proverbs 1", "Ecclesiastes 3"] 
-};
-
-// Simulated delay to mimic heavy Vector Math / Cosine Similarity processing
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+// --- PURE MATHEMATICS: COSINE SIMILARITY ---
+function calculateCosineSimilarity(vecA: number[], vecB: number[]): number {
+  let dotProduct = 0;
+  let magnitudeA = 0;
+  let magnitudeB = 0;
+  
+  for (let i = 0; i < vecA.length; i++) {
+    dotProduct += vecA[i] * vecB[i];
+    magnitudeA += vecA[i] * vecA[i];
+    magnitudeB += vecB[i] * vecB[i];
+  }
+  
+  if (magnitudeA === 0 || magnitudeB === 0) return 0;
+  return dotProduct / (Math.sqrt(magnitudeA) * Math.sqrt(magnitudeB));
+}
 
 export async function POST(req: Request) {
   try {
@@ -23,40 +26,61 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No chapter ID provided." }, { status: 400 });
     }
 
-    console.log(`\n=== Scanning Vector Space for Thematic Siblings: ${chapterId} ===`);
+    console.log(`\n=== Scanning Deep Vector Space for: ${chapterId} ===`);
 
-    // 1. Simulate the time it takes to run Cosine Similarity across 1,189 chapters
-    await delay(600); 
+    // 1. Load the pre-calculated coordinates from the public folder
+    const vectorDbPath = path.resolve(process.cwd(), 'public/semantic_embeddings.json');
+    
+    if (!fs.existsSync(vectorDbPath)) {
+        throw new Error("Semantic Vector Database not found. Have you run generateEmbeddings.js?");
+    }
 
-    // 2. Retrieve the thematic matches (In production, this is where the math happens)
-    const matches = MOCK_VECTOR_DB[chapterId] || MOCK_VECTOR_DB["default"];
+    const vectorDatabase = JSON.parse(fs.readFileSync(vectorDbPath, 'utf8'));
+    
+    const targetVector = vectorDatabase[chapterId];
+    if (!targetVector) {
+        throw new Error(`Coordinate for ${chapterId} not found in vector space.`);
+    }
 
-    // 3. Format the Nodes 
-    // We send back the minimal data required for a node. 
-    // The frontend deduplication armor will decide whether to actually render these or not.
-    const nodes = matches.map(match => {
-      const [book, ...chapterParts] = match.split(" ");
+    // 2. Run the math against all other chapters
+    const scores: { id: string; score: number }[] = [];
+    
+    for (const [id, vector] of Object.entries(vectorDatabase)) {
+        if (id === chapterId) continue; // Skip comparing the chapter to itself
+        
+        const score = calculateCosineSimilarity(targetVector, vector as number[]);
+        scores.push({ id, score });
+    }
+
+    // 3. Sort by highest mathematical similarity and take the top 5
+    scores.sort((a, b) => b.score - a.score);
+    const topSiblings = scores.slice(0, 5);
+
+    console.log(`Found Thematic Siblings for ${chapterId}:`, topSiblings.map(s => `${s.id} (${(s.score * 100).toFixed(1)}%)`));
+
+    // 4. Format the Nodes for the Frontend Armor
+    const nodes = topSiblings.map(match => {
+      const parts = match.id.split(" ");
+      const chapter = parts.pop();
+      const book = parts.join(" ");
+      
       return {
         book: book,
-        chapter: parseInt(chapterParts.join(" "), 10),
-        id: match,
-        isSemantic: true // Flag to tell the frontend these are "Ghost Nodes"
+        chapter: parseInt(chapter as string, 10),
+        id: match.id,
+        isSemantic: true
       };
     });
 
-    // 4. Format the Ghost Links
-    // We explicitly flag these as semantic so the frontend sets their gravitational strength to 0.
-    const connections = matches.map(match => ({
+    // 5. Format the Ghost Links
+    const connections = topSiblings.map(match => ({
       source: chapterId,
-      target: match,
-      isSemantic: true, // Crucial: Tells the physics engine NOT to pull these stars together
+      target: match.id,
+      isSemantic: true,
       isDynamic: false
     }));
 
-    return NextResponse.json({ 
-      nodes, 
-      connections 
-    });
+    return NextResponse.json({ nodes, connections });
 
   } catch (error: any) {
     console.error("Semantic Vector Scan Failed:", error);

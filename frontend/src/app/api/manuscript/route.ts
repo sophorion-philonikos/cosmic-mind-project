@@ -8,9 +8,7 @@ const CANONICAL_BOOKS = [
   "Matthew", "Mark", "Luke", "John", "Acts", "Romans", "1 Corinthians", "2 Corinthians", "Galatians", "Ephesians", "Philippians", "Colossians", "1 Thessalonians", "2 Thessalonians", "1 Timothy", "2 Timothy", "Titus", "Philemon", "Hebrews", "James", "1 Peter", "2 Peter", "1 John", "2 John", "3 John", "Jude", "Revelation"
 ];
 
-// Helper to determine if a line of text is a new chapter heading
 function isChapterHeading(line: string) {
-    // The "Psalm" Exception: Catch singular psalm headings to close the capture loop
     if (line.startsWith("Psalm ")) {
         const remainder = line.substring(6).trim();
         if (/^\d+$/.test(remainder)) return true;
@@ -25,7 +23,6 @@ function isChapterHeading(line: string) {
     return false;
 }
 
-// 1. Declare the global cache variable for the manuscript lines
 let cachedManuscriptLines: string[] | null = null;
 
 export async function POST(req: Request) {
@@ -35,7 +32,6 @@ export async function POST(req: Request) {
 
         console.log(`\n=== Extracting Manuscript Data for: "${chapterId}" ===`);
 
-        // 2. Read from disk and split into lines ONLY if the cache is empty
         if (!cachedManuscriptLines) {
             console.log("Loading manuscript text into memory for the first time...");
             const filePath = path.join(process.cwd(), 'public', 'manuscript.txt');
@@ -48,13 +44,10 @@ export async function POST(req: Request) {
             console.log("Serving manuscript text from high-speed RAM cache.");
         }
 
-        // 3. Use the cached lines
         const lines = cachedManuscriptLines;
-
         let isCapturing = false;
         const chapterText: string[] = [];
 
-        // The Pluralization Patch
         let searchId = chapterId;
         if (searchId.startsWith("Psalms ")) {
             searchId = searchId.replace("Psalms ", "Psalm ");
@@ -64,13 +57,11 @@ export async function POST(req: Request) {
             line = line.trim();
             if (!line) continue;
 
-            // When we hit our target chapter heading, turn the capture beam on
             if (line === searchId) {
                 isCapturing = true;
                 continue; 
             }
 
-            // Once capturing, grab everything until we hit the next chapter heading
             if (isCapturing) {
                 if (isChapterHeading(line)) {
                     break; 

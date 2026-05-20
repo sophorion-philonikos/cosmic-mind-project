@@ -47,7 +47,7 @@ const generateGlowTexture = (r: number, g: number, b: number) => {
 const cyanGlowTexture = generateGlowTexture(0, 255, 255);
 const yellowGlowTexture = generateGlowTexture(255, 204, 0);
 const redGlowTexture = generateGlowTexture(255, 50, 50);
-const purpleGlowTexture = generateGlowTexture(139, 92, 246); // NEW: Purple glow for semantic siblings
+const purpleGlowTexture = generateGlowTexture(139, 92, 246);
 
 const ForceGraph3D = dynamic(() => import('react-force-graph-3d'), { 
   ssr: false,
@@ -61,7 +61,7 @@ const getBookName = (nodeRef: any) => {
   return '';
 };
 
-export default function StarMap({ activeNodes, activeConnections = [] }: { activeNodes: any[], activeConnections?: any[] }) {
+export default function StarMap({ activeNodes, activeConnections = [], isChatOpen = false, chatWidth = 450 }: { activeNodes: any[], activeConnections?: any[], isChatOpen?: boolean, chatWidth?: number }) {
   const normalizedActiveNodes = useMemo(() => {
     return activeNodes.map(node => ({
       ...node,
@@ -87,14 +87,15 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
   const [heatmapScores, setHeatmapScores] = useState<Record<string, number>>({});
   const [isSearchingTheme, setIsSearchingTheme] = useState(false);
   
-  // NEW: SEMANTIC MULTI-HOP STATE
-  const [semanticIds, setSemanticIds] = useState<string[]>([]);
+  // SEMANTIC MULTI-HOP STATE
   const [semanticLinks, setSemanticLinks] = useState<any[]>([]);
   const [isScanningSemantic, setIsScanningSemantic] = useState(false);
 
-  // MANUSCRIPT TEXT STATE
-  const [nodeText, setNodeText] = useState<string>('');
-  const [isFetchingText, setIsFetchingText] = useState(false);
+  // MULTI-PANE READING STATE
+  const [selectedNodes, setSelectedNodes] = useState<any[]>([]);
+  const [nodeTexts, setNodeTexts] = useState<Record<string, string>>({});
+  const [loadingTexts, setLoadingTexts] = useState<Record<string, boolean>>({});
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
 
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const [audioRate, setAudioRate] = useState<number>(1);
@@ -103,35 +104,41 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
   const stableCoordsRef = useRef<Record<string, {x: number, y: number, z: number}>>({});
   const hasCaptured = useRef(false);
   const fgRef = useRef<any>();
-  const [selectedNode, setSelectedNode] = useState<any | null>(null);
 
   const activeUniverseRef = useRef(activeUniverse);
   useEffect(() => { activeUniverseRef.current = activeUniverse; }, [activeUniverse]);
 
-  // Clear semantic nodes when the Oracle generates a new answer
+  // DERIVED STATE: Automatically pulls valid ghost nodes from valid links
+  const semanticIds = useMemo(() => {
+    return Array.from(new Set(semanticLinks.map(l => l.target?.id || l.target)));
+  }, [semanticLinks]);
+
+  // CLEARS MAP WHEN ORACLE GENERATES A NEW CONSTELLATION
   useEffect(() => {
-    setSemanticIds([]);
     setSemanticLinks([]);
   }, [activeNodes]);
 
-  // NEW: MULTI-HOP API CALL
-  const handleScanSiblings = async () => {
-    if (!selectedNode) return;
+  // CLEARS ORPHANED GHOST NODES WHEN A WINDOW IS CLOSED
+  useEffect(() => {
+    setSemanticLinks(prev => {
+      const activeSelectedIds = selectedNodes.map(n => n.id);
+      return prev.filter(l => activeSelectedIds.includes(l.source?.id || l.source));
+    });
+  }, [selectedNodes]);
+
+  // MULTI-HOP API CALL 
+  const handleScanSiblings = async (chapterId: string) => {
     setIsScanningSemantic(true);
     try {
       const res = await fetch('/api/semantic', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chapterId: selectedNode.id })
+        body: JSON.stringify({ chapterId })
       });
       const data = await res.json();
       
-      const newIds = data.nodes.map((n: any) => n.id);
-      setSemanticIds(prev => Array.from(new Set([...prev, ...newIds])));
-      
-      // Merge new ghost links, preventing duplicate drawing
       setSemanticLinks(prev => {
-        const existing = new Set(prev.map(l => `${l.source.id || l.source}-${l.target.id || l.target}`));
+        const existing = new Set(prev.map(l => `${l.source?.id || l.source}-${l.target?.id || l.target}`));
         const toAdd = data.connections.filter((c: any) => !existing.has(`${c.source}-${c.target}`));
         return [...prev, ...toAdd];
       });
@@ -142,22 +149,23 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
     }
   };
 
+  // MULTI-FETCH EFFECT
   useEffect(() => {
-    if (!selectedNode) {
-        setNodeText('');
-        return;
-    }
-    setIsFetchingText(true);
-    fetch('/api/manuscript', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chapterId: selectedNode.id })
-    })
-    .then(res => res.json())
-    .then(data => setNodeText(data.text || "No manuscript data found."))
-    .catch(() => setNodeText("Error establishing connection to archives."))
-    .finally(() => setIsFetchingText(false));
-  }, [selectedNode]);
+    selectedNodes.forEach(node => {
+      if (!nodeTexts[node.id] && !loadingTexts[node.id]) {
+        setLoadingTexts(prev => ({ ...prev, [node.id]: true }));
+        fetch('/api/manuscript', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chapterId: node.id })
+        })
+        .then(res => res.json())
+        .then(data => setNodeTexts(prev => ({ ...prev, [node.id]: data.text || "No manuscript data found." })))
+        .catch(() => setNodeTexts(prev => ({ ...prev, [node.id]: "Error establishing connection to archives." })))
+        .finally(() => setLoadingTexts(prev => ({ ...prev, [node.id]: false })));
+      }
+    });
+  }, [selectedNodes]);
 
   const handleThemeSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -166,7 +174,7 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
     setIsSearchingTheme(true);
     setHighlightedBook(''); 
     setLocatorQuery('');
-    setSelectedNode(null); 
+    setSelectedNodes([]); 
     
     try {
       const res = await fetch('/api/heatmap', {
@@ -208,19 +216,28 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
     return premiumVoice || matchingVoices[0];
   };
 
+  // MULTI-SELECT KEYBOARD NAVIGATION
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (document.activeElement?.tagName === 'INPUT') return;
-      if (!selectedNode) return;
+      if (selectedNodes.length === 0) return;
+      
+      const lastNode = selectedNodes[selectedNodes.length - 1];
       if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-        const targetChapter = e.key === 'ArrowRight' ? selectedNode.chapter + 1 : selectedNode.chapter - 1;
-        const targetNode = activeUniverseRef.current.nodes.find((n: any) => n.id === `${selectedNode.book} ${targetChapter}`);
-        if (targetNode) { e.preventDefault(); handleNodeClick(targetNode); }
+        const targetChapter = e.key === 'ArrowRight' ? lastNode.chapter + 1 : lastNode.chapter - 1;
+        const targetNode = activeUniverseRef.current.nodes.find((n: any) => n.id === `${lastNode.book} ${targetChapter}`);
+        if (targetNode) { 
+            e.preventDefault(); 
+            setSelectedNodes(prev => [...prev.filter(n => n.id !== lastNode.id), targetNode]);
+            const distance = 120; 
+            const distRatio = 1 + distance / Math.hypot(targetNode.x, targetNode.y, targetNode.z);
+            if (fgRef.current) fgRef.current.cameraPosition({ x: targetNode.x * distRatio, y: targetNode.y * distRatio, z: targetNode.z * distRatio }, targetNode, 2000);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNode]);
+  }, [selectedNodes]);
 
   const handleToggleAudio = (text: string, langCode: string, id: string) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
@@ -248,7 +265,7 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
         setPlayingAudioId(null);
       }
     };
-  }, [selectedNode]);
+  }, [selectedNodes]);
 
   const flyToBook = useCallback((bookName: string) => {
     if (!fgRef.current || !bookName) return;
@@ -331,7 +348,6 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
     const newUniverse = {
       nodes: baseUniverse.nodes.map(n => {
          const cloned = { ...n };
-         // The Pristine Merge: A node is active if the Oracle called it OR if the Multi-Hop math found it
          const isNodeActive = currentActiveIds.includes(cloned.id) || semanticIds.includes(cloned.id);
          
          const shouldLock = !isDynamicLayout || !isNodeActive;
@@ -358,15 +374,16 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
       newUniverse.links = [...newUniverse.links, ...validLinks];
     }
 
-    if (selectedNode && crossRefDatabase[selectedNode.id]) {
-      crossRefDatabase[selectedNode.id].forEach(targetId => {
-        if (baseUniverse.nodes.some((n:any) => n.id === targetId)) {
-          newUniverse.links.push({ source: selectedNode.id, target: targetId, isStaticReference: true });
-        }
-      });
-    }
+    selectedNodes.forEach(sn => {
+      if (crossRefDatabase[sn.id]) {
+        crossRefDatabase[sn.id].forEach(targetId => {
+          if (baseUniverse.nodes.some((n:any) => n.id === targetId)) {
+            newUniverse.links.push({ source: sn.id, target: targetId, isStaticReference: true });
+          }
+        });
+      }
+    });
 
-    // Merge the Ghost Links into the physics engine safely
     if (semanticLinks && semanticLinks.length > 0) {
         const validSemanticLinks = semanticLinks.filter(link => {
             return baseUniverse.nodes.some((n: any) => n.id === (link.source.id || link.source)) && 
@@ -383,7 +400,7 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
         if (linkForce) {
           linkForce.distance((link: any) => link.isDynamic ? 60 : 30);
           linkForce.strength((link: any) => {
-            if (link.isSemantic) return 0; // ZERO GRAVITY for Ghost Links
+            if (link.isSemantic) return 0; 
             if (link.isStaticReference) return 0; 
             if (!isDynamicLayout) return link.isDynamic ? 0 : 0.4; 
             return link.isDynamic ? 0.8 : 0.4;
@@ -391,7 +408,7 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
         }
       }
     }, 50);
-  }, [JSON.stringify(activeConnections), JSON.stringify(normalizedActiveNodes), baseUniverse, isDynamicLayout, selectedNode, crossRefDatabase, semanticIds, semanticLinks]); 
+  }, [JSON.stringify(activeConnections), JSON.stringify(normalizedActiveNodes), baseUniverse, isDynamicLayout, selectedNodes, crossRefDatabase, semanticIds, semanticLinks]); 
 
   useEffect(() => {
     const container = document.getElementById('starmap-container');
@@ -424,13 +441,28 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
   const hasActiveNodes = normalizedActiveNodes.length > 0;
   const isHeatmapActive = Object.keys(heatmapScores).length > 0;
 
-  const handleNodeClick = useCallback((node: any) => {
+  // MULTI-SELECT CLICK HANDLER
+  const handleNodeClick = useCallback((node: any, event?: any) => {
     if (node.x === undefined || node.y === undefined || node.z === undefined) return;
+    
     const distance = 120; 
     const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
     if (fgRef.current) fgRef.current.cameraPosition({ x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio }, node, 2000);
-    setSelectedNode(node);
-  }, []);
+    
+    setSelectedNodes(prev => {
+      const isMulti = (event && (event.ctrlKey || event.metaKey)) || isMultiSelectMode;
+  
+      if (isMulti) {
+        if (prev.find(n => n.id === node.id)) return prev;
+        if (prev.length >= 4) {
+           return [...prev.slice(1), node];
+        }
+        return [...prev, node];
+      } else {
+        return [node];
+      }
+    });
+  }, [isMultiSelectMode]);
 
   const handleHudClick = (targetId: string) => {
     const targetNode = activeUniverse.nodes.find((n: any) => n.id === targetId);
@@ -494,6 +526,17 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
           >
             CENTER GALAXY
           </button>
+
+          <button 
+            onClick={() => setIsMultiSelectMode(!isMultiSelectMode)}
+            className={`text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded border transition-all duration-300 shadow-md ${
+              isMultiSelectMode 
+                ? 'bg-purple-900/50 border-purple-500 text-purple-300 shadow-[0_0_10px_rgba(139,92,246,0.3)]' 
+                : 'border-gray-600 bg-gray-800 text-gray-400 hover:text-white hover:border-gray-400'
+            }`}
+          >
+            {isMultiSelectMode ? 'Multi-Select : ON' : 'Multi-Select : OFF'}
+          </button>
         </div>
 
         {/* ROW 2: Canonical Locator */}
@@ -507,7 +550,7 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
               setShowSuggestions(false); 
               flyToBook(targetBook); 
               clearHeatmap(); 
-              setSelectedNode(null);
+              setSelectedNodes([]);
             }}
             className="flex items-center gap-2"
           >
@@ -531,7 +574,7 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
                         setShowSuggestions(false); 
                         flyToBook(suggestion); 
                         clearHeatmap(); 
-                        setSelectedNode(null);
+                        setSelectedNodes([]);
                       }}
                       className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-yellow-500/20 hover:text-yellow-500 transition-colors border-b border-gray-800 last:border-0"
                     >
@@ -584,11 +627,15 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
           nodeThreeObject={(node: any) => {
             const isActive = activeChapterIds.includes(node.id);
             const isHighlighted = highlightedBook && node.book?.toLowerCase() === highlightedBook.toLowerCase();
-            const isSelected = selectedNode && selectedNode.id === node.id;
+            const isSelected = selectedNodes.some(n => n.id === node.id);
             const isSemanticTarget = semanticIds.includes(node.id) && !activeChapterIds.includes(node.id);
             
             let isTarget = false;
-            if (selectedNode && crossRefDatabase[selectedNode.id]) isTarget = crossRefDatabase[selectedNode.id].includes(node.id);
+            selectedNodes.forEach(sn => {
+              if (crossRefDatabase[sn.id] && crossRefDatabase[sn.id].includes(node.id)) {
+                isTarget = true;
+              }
+            });
 
             const heatmapScore = isHeatmapActive && node.id ? (heatmapScores[node.id] || 0) : 0;
             const isHeatmapTarget = isHeatmapActive && heatmapScore > 0;
@@ -622,7 +669,6 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
                 sprite.scale.set(35, 35, 1); group.add(sprite);
               }
             } else if (isSemanticTarget) {
-              // Deep Purple rendering for the new Ghost Nodes
               const coreGeo = new THREE.SphereGeometry(3, 16, 16);
               const coreMat = new THREE.MeshBasicMaterial({ color: '#8b5cf6' }); 
               const core = new THREE.Mesh(coreGeo, coreMat);
@@ -659,7 +705,7 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
               }
             } else {
               const inactiveGeo = new THREE.SphereGeometry(2, 16, 16);
-              let inactiveOpacity = (hasActiveNodes || highlightedBook || selectedNode) ? 0.2 : 0.6;
+              let inactiveOpacity = (hasActiveNodes || highlightedBook || selectedNodes.length > 0) ? 0.2 : 0.6;
               if (isHeatmapActive) inactiveOpacity = 0.05; 
               
               const inactiveMat = new THREE.MeshLambertMaterial({ color: '#cbd5e1', transparent: true, opacity: inactiveOpacity });
@@ -671,7 +717,7 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
           }}
 
           linkColor={(link: any) => {
-            if (link.isSemantic) return 'rgba(139, 92, 246, 0.4)'; // Faint Purple for ghost links
+            if (link.isSemantic) return 'rgba(139, 92, 246, 0.4)'; 
             if (link.isStaticReference) return 'rgba(255, 215, 0, 0.15)'; 
             if (link.isDynamic) return 'rgba(0, 255, 255, 0.9)';
             
@@ -692,7 +738,7 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
           
           linkWidth={(link: any) => {
             if (isHeatmapActive) return 0; 
-            if (link.isSemantic) return 0.5; // Thin ghost links
+            if (link.isSemantic) return 0.5; 
             if (link.isStaticReference) return 0.5;
             if (link.isDynamic) return 1.5;
             const sourceBook = getBookName(link.source);
@@ -715,54 +761,57 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
         />
       )}
 
-      {selectedNode && (
-        <div className="absolute bottom-10 left-10 w-[450px] bg-gray-900 border border-cyan-500/50 rounded-lg p-5 shadow-[0_0_15px_rgba(0,255,255,0.2)] z-50 transition-all duration-300">
-          
-          <button onClick={() => { 
-            setSelectedNode(null); 
-            window.speechSynthesis?.cancel(); 
-            setPlayingAudioId(null); 
-            resetCamera(); 
-          }} className="absolute top-2 right-3 text-gray-400 hover:text-white">✕</button>
-          
-          <div className="flex justify-between items-start mb-1 pr-6">
-            <h3 className="text-xl font-bold text-cyan-400 uppercase tracking-widest">{selectedNode.id}</h3>
-            
-            <div className="flex gap-2">
-                {/* NEW: The Semantic Scan Button */}
-                <button 
-                  onClick={handleScanSiblings} 
-                  disabled={isScanningSemantic}
-                  className="text-[9px] uppercase font-bold tracking-wider px-2 py-1 rounded border border-purple-500 bg-purple-900/20 text-purple-400 hover:bg-purple-900/40 hover:text-purple-300 transition-all shadow-[0_0_10px_rgba(139,92,246,0.2)] disabled:opacity-50"
-                >
-                  {isScanningSemantic ? 'SCANNING...' : 'SCAN THEMATIC SIBLINGS'}
-                </button>
+      {/* NEW MULTI-PANE READING INTERFACE */}
+      {selectedNodes.length > 0 && (
+        <div 
+          className="absolute bottom-10 left-10 flex gap-4 overflow-x-auto overflow-y-hidden custom-scrollbar pb-4 pt-4 px-2 transition-all duration-500 pointer-events-auto z-10"
+          style={{ right: isChatOpen ? `${chatWidth + 16}px` : '16px' }}
+        >
+          {selectedNodes.map((node) => {
+            const activeCitations = normalizedActiveNodes.filter(n => `${n.book} ${n.chapter}` === node.id);
+            const hasAncientLanguages = activeCitations.length > 0 && activeCitations.some(c => c.languages);
 
-                <button onClick={() => setAudioRate(prev => prev === 1 ? 0.5 : (prev === 0.5 ? 0.25 : 1))} className={`text-[9px] font-bold tracking-wider px-2 py-1 rounded border transition-all ${audioRate < 1 ? 'bg-yellow-500/20 border-yellow-500 text-yellow-500' : 'bg-gray-800 border-gray-600 text-gray-400 hover:text-white'}`}>SPEED: {audioRate}x</button>
-            </div>
-          </div>
-
-          <p className="text-xs text-gray-500 uppercase mb-4 border-b border-gray-700 pb-2 flex justify-between items-center">
-            <span>Class: {selectedNode.book || "Manuscript"}</span>
-            <span className="text-[9px] text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">Use ⬅ ➡ Arrows to Navigate</span>
-          </p>
-          
-          <div className="text-sm text-gray-300 leading-relaxed max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-            {isFetchingText ? (
-              <div className="flex flex-col items-center justify-center py-10 space-y-3">
-                <div className="w-5 h-5 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
-                <div className="text-cyan-500 text-[10px] uppercase tracking-widest animate-pulse">Extracting records from archives...</div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <p className="text-[10px] text-cyan-600 italic mb-2">💡 Click on any phrase below to hear it spoken aloud.</p>
+            return (
+              <div key={node.id} className="relative w-[400px] shrink-0 bg-gray-900/95 border border-cyan-500/50 rounded-lg p-5 shadow-[0_0_20px_rgba(0,0,0,0.8)] pointer-events-auto backdrop-blur-md transition-all duration-300 flex flex-col max-h-[80vh]">
                 
-                {(() => {
-                  const activeCitations = normalizedActiveNodes.filter(n => `${n.book} ${n.chapter}` === selectedNode.id);
-                  const hasAncientLanguages = activeCitations.length > 0 && activeCitations.some(c => c.languages);
+                <button onClick={() => { 
+                  setSelectedNodes(prev => prev.filter(n => n.id !== node.id));
+                  if (playingAudioId?.includes(node.id)) {
+                    window.speechSynthesis?.cancel(); 
+                    setPlayingAudioId(null); 
+                  }
+                }} className="absolute top-2 right-3 text-gray-400 hover:text-white hover:text-red-400 transition-colors">✕</button>
+                
+                <div className="flex justify-between items-start mb-1 pr-6 shrink-0">
+                  <h3 className="text-xl font-bold text-cyan-400 uppercase tracking-widest">{node.id}</h3>
                   
-                  return (
-                    <>
+                  <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleScanSiblings(node.id)} 
+                        disabled={isScanningSemantic}
+                        className="text-[8px] uppercase font-bold tracking-wider px-2 py-1 rounded border border-purple-500 bg-purple-900/20 text-purple-400 hover:bg-purple-900/40 hover:text-purple-300 transition-all shadow-[0_0_10px_rgba(139,92,246,0.2)] disabled:opacity-50"
+                      >
+                        {isScanningSemantic ? 'SCANNING...' : 'SCAN SIBLINGS'}
+                      </button>
+                      <button onClick={() => setAudioRate(prev => prev === 1 ? 0.5 : (prev === 0.5 ? 0.25 : 1))} className={`text-[8px] font-bold tracking-wider px-2 py-1 rounded border transition-all ${audioRate < 1 ? 'bg-yellow-500/20 border-yellow-500 text-yellow-500' : 'bg-gray-800 border-gray-600 text-gray-400 hover:text-white'}`}>SPEED: {audioRate}x</button>
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-gray-500 uppercase mb-3 border-b border-gray-700 pb-2 flex justify-between items-center shrink-0">
+                  <span>Class: {node.book || "Manuscript"}</span>
+                  <span className="text-[8px] text-gray-600 bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">Use ⬅ ➡ Arrows to Navigate</span>
+                </p>
+                
+                <div className="text-sm text-gray-300 leading-relaxed overflow-y-auto pr-2 custom-scrollbar flex-1">
+                  {loadingTexts[node.id] ? (
+                    <div className="flex flex-col items-center justify-center py-10 space-y-3">
+                      <div className="w-5 h-5 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+                      <div className="text-cyan-500 text-[10px] uppercase tracking-widest animate-pulse">Extracting records from archives...</div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 pb-4">
+                      <p className="text-[10px] text-cyan-600 italic mb-2">💡 Click on any phrase below to hear it spoken aloud.</p>
+                      
                       {hasAncientLanguages && activeCitations.map((citation, idx) => (
                         <div key={`ancient-${idx}`} className="space-y-3 bg-gray-800/50 p-3 rounded border border-gray-700/50 mb-4">
                           <div className="text-cyan-400 text-xs font-mono font-bold border-b border-gray-700 pb-1">Targeted Citation: {citation.verses ? `Verses ${citation.verses}` : `Chapter ${citation.chapter}`}</div>
@@ -771,10 +820,10 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
                             <div className="space-y-1">
                               <div className="flex justify-between items-center">
                                 <span className="text-[9px] uppercase tracking-widest text-gray-500">Hebrew (MT)</span>
-                                {renderAudioButton(citation.languages.hebrew_masoretic, 'he-IL', `he-full-${idx}`)}
+                                {renderAudioButton(citation.languages.hebrew_masoretic, 'he-IL', `he-full-${idx}-${node.id}`)}
                               </div>
                               <div className="text-gray-300 font-serif text-right text-base leading-relaxed" dir="rtl">
-                                {renderInteractiveClauses(citation.languages.hebrew_masoretic, 'he-IL', `he-${idx}`)}
+                                {renderInteractiveClauses(citation.languages.hebrew_masoretic, 'he-IL', `he-${idx}-${node.id}`)}
                               </div>
                             </div>
                           )}
@@ -783,10 +832,10 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
                             <div className="space-y-1">
                               <div className="flex justify-between items-center">
                                 <span className="text-[9px] uppercase tracking-widest text-gray-500">Aramaic</span>
-                                {renderAudioButton(citation.languages.aramaic, 'he-IL', `ar-full-${idx}`)}
+                                {renderAudioButton(citation.languages.aramaic, 'he-IL', `ar-full-${idx}-${node.id}`)}
                               </div>
                               <div className="text-gray-300 font-serif text-right text-base leading-relaxed" dir="rtl">
-                                {renderInteractiveClauses(citation.languages.aramaic, 'he-IL', `ar-${idx}`)}
+                                {renderInteractiveClauses(citation.languages.aramaic, 'he-IL', `ar-${idx}-${node.id}`)}
                               </div>
                             </div>
                           )}
@@ -795,37 +844,37 @@ export default function StarMap({ activeNodes, activeConnections = [] }: { activ
                             <div className="space-y-1">
                               <div className="flex justify-between items-center">
                                 <span className="text-[9px] uppercase tracking-widest text-gray-500">Greek (LXX/NT)</span>
-                                {renderAudioButton(citation.languages.greek_manuscript, 'el-GR', `gr-full-${idx}`)}
+                                {renderAudioButton(citation.languages.greek_manuscript, 'el-GR', `gr-full-${idx}-${node.id}`)}
                               </div>
                               <div className="text-gray-300 font-serif leading-relaxed">
-                                {renderInteractiveClauses(citation.languages.greek_manuscript, 'el-GR', `gr-${idx}`)}
+                                {renderInteractiveClauses(citation.languages.greek_manuscript, 'el-GR', `gr-${idx}-${node.id}`)}
                               </div>
                             </div>
                           )}
                         </div>
                       ))}
 
-                      {nodeText ? (
+                      {nodeTexts[node.id] ? (
                         <div className="bg-gray-800/50 p-3 rounded border border-gray-700/50">
                           <div className="flex justify-between items-center mb-2 border-b border-gray-700 pb-2">
                             <span className="text-[10px] uppercase tracking-widest text-cyan-700">English Manuscript Source</span>
-                            {renderAudioButton(nodeText, 'en-US', `en-full-${selectedNode.id}`)}
+                            {renderAudioButton(nodeTexts[node.id], 'en-US', `en-full-${node.id}`)}
                           </div>
                           <div className="italic text-gray-200 text-sm leading-relaxed">
-                            "{renderInteractiveClauses(nodeText, 'en-US', `en-${selectedNode.id}`)}"
+                            "{renderInteractiveClauses(nodeTexts[node.id], 'en-US', `en-${node.id}`)}"
                           </div>
                         </div>
                       ) : (
-                        <div className="text-gray-500 italic flex flex-col gap-2">
+                        <div className="text-gray-500 italic text-xs">
                           <span>The archive contains no legible English text for this coordinate.</span>
                         </div>
                       )}
-                    </>
-                  );
-                })()}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
+            );
+          })}
         </div>
       )}
     </div>
