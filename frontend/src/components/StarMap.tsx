@@ -764,7 +764,7 @@ export default function StarMap({ activeNodes, activeConnections = [], isChatOpe
       {/* NEW MULTI-PANE READING INTERFACE */}
       {selectedNodes.length > 0 && (
         <div 
-          className="absolute bottom-10 left-10 flex gap-4 overflow-x-auto overflow-y-hidden custom-scrollbar pb-4 pt-4 px-2 transition-all duration-500 pointer-events-auto z-10"
+          className="absolute bottom-10 left-10 flex items-end gap-4 overflow-x-auto overflow-y-hidden custom-scrollbar pb-4 pt-4 px-2 pointer-events-none z-10 transition-all duration-500"
           style={{ right: isChatOpen ? `${chatWidth + 16}px` : '16px' }}
         >
           {selectedNodes.map((node) => {
@@ -772,7 +772,7 @@ export default function StarMap({ activeNodes, activeConnections = [], isChatOpe
             const hasAncientLanguages = activeCitations.length > 0 && activeCitations.some(c => c.languages);
 
             return (
-              <div key={node.id} className="relative w-[400px] shrink-0 bg-gray-900/95 border border-cyan-500/50 rounded-lg p-5 shadow-[0_0_20px_rgba(0,0,0,0.8)] pointer-events-auto backdrop-blur-md transition-all duration-300 flex flex-col max-h-[80vh]">
+              <div key={node.id} className="relative flex-1 w-full min-w-[200px] max-w-[400px] bg-gray-900/95 border border-cyan-500/50 rounded-lg p-5 shadow-[0_0_20px_rgba(0,0,0,0.8)] pointer-events-auto backdrop-blur-md transition-all duration-300 flex flex-col max-h-[65vh]">
                 
                 <button onClick={() => { 
                   setSelectedNodes(prev => prev.filter(n => n.id !== node.id));
