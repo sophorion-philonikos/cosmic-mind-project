@@ -772,7 +772,7 @@ export default function StarMap({ activeNodes, activeConnections = [], isChatOpe
             const hasAncientLanguages = activeCitations.length > 0 && activeCitations.some(c => c.languages);
 
             return (
-              <div key={node.id} className="relative flex-1 w-full min-w-[200px] max-w-[400px] bg-gray-900/95 border border-cyan-500/50 rounded-lg p-5 shadow-[0_0_20px_rgba(0,0,0,0.8)] pointer-events-auto backdrop-blur-md transition-all duration-300 flex flex-col max-h-[65vh]">
+              <div key={node.id} className="relative flex-1 w-full min-w-[150px] max-w-[400px] bg-gray-900/95 border border-cyan-500/50 rounded-lg p-5 shadow-[0_0_20px_rgba(0,0,0,0.8)] pointer-events-auto backdrop-blur-md transition-all duration-300 flex flex-col max-h-[65vh]">
                 
                 <button onClick={() => { 
                   setSelectedNodes(prev => prev.filter(n => n.id !== node.id));

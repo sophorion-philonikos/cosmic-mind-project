@@ -135,7 +135,9 @@ export default function CosmicMindUI() {
       <div className="absolute inset-0 z-0">
         <StarMap 
           activeNodes={activeConstellation} 
-          activeConnections={activeConnections} 
+          activeConnections={activeConnections}
+          isChatOpen={isChatOpen}
+          chatWidth={drawerWidth} 
         />
       </div>
 
