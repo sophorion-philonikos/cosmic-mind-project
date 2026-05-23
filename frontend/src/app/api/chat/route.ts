@@ -10,11 +10,10 @@ export async function POST(req: Request) {
     console.log(`\n=== Asking The Cosmic Mind: ${query} ===`);
 
     // --- NEW: OFFLINE DIAGNOSTIC BYPASS ---
-    // If the user types this exact phrase, skip the API and return rich test data instantly.
     if (query.trim().toLowerCase() === "run diagnostic test") {
       console.log("-> Offline Diagnostic Mode Triggered. Bypassing API.");
       return NextResponse.json({
-        answer: "This is a simulated offline diagnostic response from the Cosmic Mind archives. It bypasses the live API to allow UI testing of the 3D physics engine and the deep manuscript audio telemetry.\n\nAs you look at the illuminated clusters on your star map, notice how this test highlights the specific capabilities of the newly upgraded manuscript viewer, connecting the ancient languages of Genesis and Daniel into a single constellation.",
+        answer: "This is a simulated offline diagnostic response from the Cosmic Mind archives. It bypasses the live API to allow UI testing of the 3D physics engine, deep manuscript audio telemetry, and the new Commentary Satellite system.\n\nNotice the neon green satellite orbiting Genesis 1. This represents our new wrapper capability to simulate multi-millennial scholarship dynamically.",
         nodes: [
           {
             book: "Daniel",
@@ -41,6 +40,15 @@ export async function POST(req: Request) {
         ],
         connections: [
           { source: "Genesis 1", target: "Daniel 2" }
+        ],
+        commentaries: [
+          {
+            id: "comm-philo-gen-1",
+            author: "Philo of Alexandria",
+            era: "Ancient (1st Century CE)",
+            targetNodeId: "Genesis 1",
+            excerpt: "The invisible and intelligible light has been made an image of the divine Word, which has explained its genesis. It is a super-celestial constellation, the source of the visible stars..."
+          }
         ]
       });
     }
@@ -50,7 +58,7 @@ export async function POST(req: Request) {
         model: "gemini-2.5-flash",
         generationConfig: { 
             temperature: 0.3,
-            maxOutputTokens: 8192, // PREVENTS INFINITE LOOPS: Hard caps the generation so it never runs for 4 minutes
+            maxOutputTokens: 8192,
             responseMimeType: "application/json",
             responseSchema: {
                 type: SchemaType.OBJECT,
@@ -61,7 +69,7 @@ export async function POST(req: Request) {
                     },
                     citations: {
                         type: SchemaType.ARRAY,
-                        description: "Extract citations if you mention texts.",
+                        description: "Extract citations if you mention primary biblical texts.",
                         items: {
                             type: SchemaType.OBJECT,
                             properties: {
@@ -70,12 +78,11 @@ export async function POST(req: Request) {
                                 verses: { type: SchemaType.STRING },
                                 languages: {
                                     type: SchemaType.OBJECT,
-                                    description: "Provide the excerpt in the available ancient manuscript languages alongside the English.",
                                     properties: {
                                         english_nrsvue: { type: SchemaType.STRING, description: "The NRSVue translation" },
-                                        hebrew_masoretic: { type: SchemaType.STRING, description: "The original Hebrew (MT), if applicable to the book." },
-                                        aramaic: { type: SchemaType.STRING, description: "The original Aramaic, if applicable to the book/chapter (e.g., portions of Daniel, Ezra)." },
-                                        greek_manuscript: { type: SchemaType.STRING, description: "The Greek Septuagint (LXX) for the OT, or the Koine Greek text for the NT." }
+                                        hebrew_masoretic: { type: SchemaType.STRING },
+                                        aramaic: { type: SchemaType.STRING },
+                                        greek_manuscript: { type: SchemaType.STRING }
                                     },
                                     required: ["english_nrsvue"]
                                 }
@@ -85,14 +92,29 @@ export async function POST(req: Request) {
                     },
                     connections: {
                         type: SchemaType.ARRAY,
-                        description: "Structural links between the specific cited chapters.",
+                        description: "Structural links between the specific cited primary chapters.",
                         items: {
                             type: SchemaType.OBJECT,
                             properties: {
-                                source: { type: SchemaType.STRING, description: "MUST be formatted as 'Book Chapter' (e.g., 'Genesis 1' or 'John 3')" },
-                                target: { type: SchemaType.STRING, description: "MUST be formatted as 'Book Chapter' (e.g., 'Genesis 1' or 'John 3')" }
+                                source: { type: SchemaType.STRING, description: "MUST be 'Book Chapter'" },
+                                target: { type: SchemaType.STRING, description: "MUST be 'Book Chapter'" }
                             },
                             required: ["source", "target"]
+                        }
+                    },
+                    commentaries: {
+                        type: SchemaType.ARRAY,
+                        description: "If your answer draws upon specific historical scholars or ancient commentators (e.g., Philo, Rashi, Church Fathers), create satellite nodes for them.",
+                        items: {
+                            type: SchemaType.OBJECT,
+                            properties: {
+                                id: { type: SchemaType.STRING, description: "Create a unique ID, e.g., 'comm-philo-gen-1'" },
+                                author: { type: SchemaType.STRING, description: "The historical author/text (e.g., 'Maimonides', 'Dead Sea Scrolls')" },
+                                era: { type: SchemaType.STRING, description: "The historical period (e.g., 'Medieval', '2nd Century BCE')" },
+                                targetNodeId: { type: SchemaType.STRING, description: "The primary 'Book Chapter' this orbits (e.g., 'Genesis 1')" },
+                                excerpt: { type: SchemaType.STRING, description: "A highly relevant 1-2 sentence excerpt summarizing their view." }
+                            },
+                            required: ["id", "author", "era", "targetNodeId", "excerpt"]
                         }
                     }
                 },
@@ -109,17 +131,18 @@ export async function POST(req: Request) {
       CORE SCHOLARLY INSTRUCTIONS:
       1. Go beyond surface-level readings. Analyze authorial intent, Ancient Near Eastern (ANE) cultural context, Second Temple Judaism, and linguistic nuances (Hebrew/Aramaic/Greek).
       2. Synthesize modern scholarly consensus and historical-critical methods. Do not just quote the text; explain *why* it was written that way for its original audience.
-      3. MACRO-QUESTIONS: If the user asks a sweeping question, select 3 to 9 representative "anchor" chapters that perfectly contrast or complement each other to prove your academic point, and extract verses from those specific anchors.
+      3. INTEGRATE HISTORICAL COMMENTARY: Whenever relevant, mention how classical/ancient/medieval scholars interpreted these texts. When you do, populate the "commentaries" array to generate satellite stars for them.
       
       UI INTEGRATION INSTRUCTIONS (BREAK THE FOURTH WALL):
-      1. You are aware that the user is looking at a 3D star map where EVERY SINGLE CHAPTER of the Bible is represented as a distinct star.
+      1. You are aware that the user is looking at a 3D star map.
       2. In the final paragraph of your answer, you MUST explicitly guide the user's eyes to the map. 
-      3. Reference the specific "clusters" or "constellations" of chapters you are drawing from. Explain *why* these specific stars are connected to form a constellation of meaning for this answer.
+      3. Reference the specific "clusters" or "constellations" and "commentary satellites" you are generating.
       
       DATA OUTPUT REQUIREMENTS:
-      - "answer": Your beautifully written, multi-paragraph scholarly response. Base all textual analysis and doctrinal reasoning strictly on the nuances of the ancient texts.
-      - "citations": Use exactly the standard 66 canonical book names. If you mention a text anywhere in your answer, it MUST be included here. Extract the specific verse in all relevant ancient languages (Hebrew, Aramaic, Greek) and the English NRSVue translation.
-      - "connections": CRITICAL RULE - Every single chapter listed in your "citations" array MUST appear at least once in your "connections" array. Do not leave any cited chapter orphaned! Your "source" and "target" MUST strictly match the format "Book Chapter" (e.g., "Isaiah 53", "Mark 1", "Genesis 14").
+      - "answer": Your beautifully written scholarly response.
+      - "citations": Use exactly the standard 66 canonical book names.
+      - "connections": CRITICAL RULE - Every single chapter listed in your "citations" array MUST appear at least once here.
+      - "commentaries": Generate nodes for historical commentators to orbit the primary stars.
       
       User Question: ${query}
     `;
@@ -142,36 +165,30 @@ export async function POST(req: Request) {
 
     let parsedData;
     try {
-      // Clean any accidental markdown code blocks the AI might inject
       let cleanText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
-      
       if (!cleanText) throw new Error("Received empty response from the model.");
-
       parsedData = JSON.parse(cleanText);
-      
-      // STRUCTURAL ARMOR: Make sure it actually built the object we need
       if (typeof parsedData !== 'object' || !parsedData.answer) {
          throw new Error("Model returned invalid JSON structure.");
       }
-
     } catch (error) {
-      console.error("JSON Parsing Failure. Response was corrupted or truncated by limits.");
-      
-      // STOPS THE BLEED: We return a clean, safe UI message instead of crashing the frontend
+      console.error("JSON Parsing Failure.");
       parsedData = { 
         answer: "The archives produced an exceptionally large textual analysis that was corrupted during transmission. Please try narrowing the scope of your query.", 
         citations: [], 
-        connections: [] 
+        connections: [],
+        commentaries: []
       };
     }
     
     return NextResponse.json({ 
       answer: parsedData.answer,
       nodes: parsedData.citations || [],
-      connections: parsedData.connections || []
+      connections: parsedData.connections || [],
+      commentaries: parsedData.commentaries || []
     });
 
   } catch (error: any) {
-    return NextResponse.json({ answer: `Error: ${error.message}`, nodes: [], connections: [] }, { status: 500 });
+    return NextResponse.json({ answer: `Error: ${error.message}`, nodes: [], connections: [], commentaries: [] }, { status: 500 });
   }
 }

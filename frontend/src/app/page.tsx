@@ -5,8 +5,9 @@ import { useState, useEffect } from 'react';
 // Type definition for our history states
 type MapSnapshot = {
   query: string;
-  nodes: {book: string, chapter: number, verses?: string, text?: string}[];
+  nodes: {book: string, chapter: number, verses?: string, languages?: any}[];
   connections: {source: string, target: string}[];
+  commentaries: {id: string, author: string, era: string, targetNodeId: string, excerpt: string}[];
 };
 
 export default function CosmicMindUI() {
@@ -21,6 +22,7 @@ export default function CosmicMindUI() {
   
   const [activeConstellation, setActiveConstellation] = useState<MapSnapshot['nodes']>([]);
   const [activeConnections, setActiveConnections] = useState<MapSnapshot['connections']>([]);
+  const [activeCommentaries, setActiveCommentaries] = useState<MapSnapshot['commentaries']>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const [history, setHistory] = useState<MapSnapshot[]>([]);
@@ -92,13 +94,15 @@ export default function CosmicMindUI() {
       
       const newNodes = data.nodes || [];
       const newConnections = data.connections || [];
+      const newCommentaries = data.commentaries || [];
 
       setActiveConstellation(newNodes);
       setActiveConnections(newConnections);
+      setActiveCommentaries(newCommentaries);
       
       setHistory(prev => {
         const updatedHistory = prev.slice(0, historyIndex + 1);
-        return [...updatedHistory, { query: userQuery, nodes: newNodes, connections: newConnections }];
+        return [...updatedHistory, { query: userQuery, nodes: newNodes, connections: newConnections, commentaries: newCommentaries }];
       });
       setHistoryIndex(prev => prev + 1);
 
@@ -115,10 +119,12 @@ export default function CosmicMindUI() {
       setHistoryIndex(targetIndex);
       setActiveConstellation(history[targetIndex].nodes);
       setActiveConnections(history[targetIndex].connections);
+      setActiveCommentaries(history[targetIndex].commentaries || []);
     } else if (targetIndex === -1) {
       setHistoryIndex(-1);
       setActiveConstellation([]);
       setActiveConnections([]);
+      setActiveCommentaries([]);
     }
   };
 
@@ -136,6 +142,7 @@ export default function CosmicMindUI() {
         <StarMap 
           activeNodes={activeConstellation} 
           activeConnections={activeConnections}
+          activeCommentaries={activeCommentaries}
           isChatOpen={isChatOpen}
           chatWidth={drawerWidth} 
         />
