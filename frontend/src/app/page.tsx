@@ -77,7 +77,14 @@ export default function CosmicMindUI() {
     if (!query.trim()) return;
 
     const userQuery = query;
-    setChatLog(prev => [...prev, { role: 'user', text: userQuery }]);
+    
+    // Add user message, and an empty AI message to be populated by the stream
+    setChatLog(prev => [
+      ...prev, 
+      { role: 'user', text: userQuery },
+      { role: 'ai', text: '' }
+    ]);
+    
     setIsLoading(true);
     setQuery('');
 
@@ -88,27 +95,67 @@ export default function CosmicMindUI() {
         body: JSON.stringify({ query: userQuery }),
       });
       
-      const data = await res.json();
+      if (!res.body) throw new Error("No readable stream received.");
 
-      setChatLog(prev => [...prev, { role: 'ai', text: data.answer }]);
-      
-      const newNodes = data.nodes || [];
-      const newConnections = data.connections || [];
-      const newCommentaries = data.commentaries || [];
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+      let accumulatedData = "";
 
-      setActiveConstellation(newNodes);
-      setActiveConnections(newConnections);
-      setActiveCommentaries(newCommentaries);
-      
-      setHistory(prev => {
-        const updatedHistory = prev.slice(0, historyIndex + 1);
-        return [...updatedHistory, { query: userQuery, nodes: newNodes, connections: newConnections, commentaries: newCommentaries }];
-      });
-      setHistoryIndex(prev => prev + 1);
+      // Stream Reading Loop
+      while (!done) {
+        const { value, done: doneReading } = await reader.read();
+        done = doneReading;
+        
+        if (value) {
+          accumulatedData += decoder.decode(value, { stream: true });
+          
+          // Split out the text part from the hidden JSON delimiter
+          const parts = accumulatedData.split("===COSMIC_DATA===");
+          const textPart = parts[0];
+
+          // Safely update just the last message in the chat log
+          setChatLog(prev => {
+            const newLog = [...prev];
+            newLog[newLog.length - 1] = { role: 'ai', text: textPart };
+            return newLog;
+          });
+        }
+      }
+
+      // Stream Finished: Now parse the hidden JSON map data
+      const parts = accumulatedData.split("===COSMIC_DATA===");
+      if (parts.length > 1) {
+        try {
+          // Clean the markdown ticks the AI might have added
+          const jsonString = parts[1].replace(/```json/gi, '').replace(/```/g, '').trim();
+          const data = JSON.parse(jsonString);
+
+          const newNodes = data.citations || [];
+          const newConnections = data.connections || [];
+          const newCommentaries = data.commentaries || [];
+
+          setActiveConstellation(newNodes);
+          setActiveConnections(newConnections);
+          setActiveCommentaries(newCommentaries);
+          
+          setHistory(prev => {
+            const updatedHistory = prev.slice(0, historyIndex + 1);
+            return [...updatedHistory, { query: userQuery, nodes: newNodes, connections: newConnections, commentaries: newCommentaries }];
+          });
+          setHistoryIndex(prev => prev + 1);
+        } catch (jsonErr) {
+          console.error("Failed to parse map constellation data:", jsonErr);
+        }
+      }
 
     } catch (error) {
       console.error(error);
-      setChatLog(prev => [...prev, { role: 'ai', text: 'Connection lost to the stars.' }]);
+      setChatLog(prev => {
+        const newLog = [...prev];
+        newLog[newLog.length - 1].text += "\n\n[Transmission interrupted. Connection lost to the stars.]";
+        return newLog;
+      });
     } finally {
       setIsLoading(false);
     }
@@ -234,7 +281,7 @@ export default function CosmicMindUI() {
 
               </div>
             ))}
-            {isLoading && <div className="text-cyan-500 animate-pulse font-mono text-xs">Calculating constellations...</div>}
+            {isLoading && <div className="text-cyan-800 animate-pulse font-mono text-xs mt-4">Generating cosmic pathways...</div>}
           </div>
 
           {/* Input Box */}
