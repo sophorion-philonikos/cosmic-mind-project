@@ -134,6 +134,7 @@ export async function POST(req: Request) {
       DATA INTEGRITY RULES (CRITICAL):
       1. "targetNodeId" in your commentaries array MUST perfectly match a "BookName Chapter" explicitly listed in your citations array.
       2. "source" and "target" in your connections array MUST perfectly match "BookName Chapter" values explicitly listed in your citations array. Do not draw lines to un-cited chapters.
+      3. PRIMARY CITATIONS RESTRICTION: The "book" field in your citations array MUST ONLY contain books from the standard Biblical canon or Apocrypha (e.g., Genesis, Exodus, Tobit, Romans). NEVER cite extra-biblical literature (like the Didache, Jubilees, or Talmud) as a primary citation. If you discuss extra-biblical literature, you MUST represent it as a "commentary" satellite orbiting the canonical text it references.
 
       User Question: ${query}
     `;
@@ -166,17 +167,14 @@ export async function POST(req: Request) {
                 const chunkText = chunk.text();
                 controller.enqueue(new TextEncoder().encode(chunkText));
             } catch (chunkErr: any) {
-                // If a recitation block occurs inside the stream loop, chunk.text() will throw.
                 console.error("Chunk decoding failed (Possible RECITATION block):", chunkErr.message);
-                throw chunkErr; // Pass to the outer catch block for graceful fallback
+                throw chunkErr; 
             }
           }
           controller.close();
         } catch (e: any) {
           console.error("Streaming error caught mid-transmission:", e.message);
           
-          // Graceful degradation: If the stream severs, append an explanation to the chat 
-          // and send an empty data object so the UI doesn't crash waiting for JSON.
           const fallbackData = `\n\n[System Alert: The transmission was restricted by safety filters due to verbatim historical text recitation. The map data could not be fully plotted. Please ask for a synthesized summary.]\n\n===COSMIC_DATA===\n{\n  "citations": [],\n  "connections": [],\n  "commentaries": []\n}`;
           controller.enqueue(new TextEncoder().encode(fallbackData));
           controller.close();
